@@ -93,12 +93,6 @@ app-template:
       type: statefulset
       annotations:
         reloader.stakater.com/auto: "true"
-      pod:
-        # The database is on local-path storage, so it lives wherever it is
-        # first scheduled. Keep it on the amd64 node's disk rather than a Pi's
-        # SD card; remove this to let it land anywhere.
-        nodeSelector:
-          kubernetes.io/arch: amd64
       statefulset:
         volumeClaimTemplates:
           - name: data
@@ -162,11 +156,6 @@ app-template:
         successfulJobsHistory: 1
         failedJobsHistory: 2
         backoffLimit: 1
-      pod:
-        # Same node as the database, so the load is not over the network
-        # from a Pi, and the catalog volume below stays put.
-        nodeSelector:
-          kubernetes.io/arch: amd64
       containers:
         main:
           image: *gutendex-image

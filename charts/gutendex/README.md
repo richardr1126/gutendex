@@ -8,7 +8,9 @@ It runs three things:
   `gutendex.richardr.dev`. external-dns publishes the record through
   Cloudflare with proxying on, and Cloudflare terminates HTTPS.
 - **`postgres`**, a dedicated PostgreSQL 17 StatefulSet on a 10 Gi
-  `local-path` volume, pinned to the amd64 node.
+  `local-path` volume. Nothing pins it to a node, but a `local-path` volume
+  belongs to the node it was first created on, so the database stays wherever
+  it first lands.
 - **`updatecatalog`**, a nightly CronJob that downloads Project Gutenberg's RDF
   catalog and loads it into the database.
 
