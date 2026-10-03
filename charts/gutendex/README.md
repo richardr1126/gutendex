@@ -51,6 +51,15 @@ helm dependency update
    helm upgrade --install gutendex charts/gutendex -n default
    ```
 
+   Or through ArgoCD, which syncs the chart from `master`:
+
+   ```bash
+   kubectl apply -f charts/argocd.yaml
+   ```
+
+   then sync it from the ArgoCD UI. The secret is still made by
+   `create_secrets.sh`; ArgoCD does not manage it.
+
 3. Load the catalog. The database starts empty and the CronJob only runs at
    09:00 UTC, so start the first import by hand:
 

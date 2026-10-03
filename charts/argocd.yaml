@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gutendex
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/richardr1126/gutendex
+    targetRevision: master
+    path: charts/gutendex
+    helm:
+      # Pinned rather than left to default to the Application's name: the API
+      # finds the database at `<release>-postgres`, so renaming the
+      # Application must not rename the release.
+      releaseName: gutendex
+      valueFiles:
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    syncOptions:
+      - PruneLast=true
