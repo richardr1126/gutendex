@@ -63,6 +63,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -146,13 +147,13 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/1.10/howto/static-files/
 
-STATIC_ROOT = env('STATIC_ROOT')
+STATIC_ROOT = env('STATIC_ROOT', default=os.path.join(BASE_DIR, 'staticfiles'))
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 
 
 # User-uploaded files
-MEDIA_ROOT = env('MEDIA_ROOT')
+MEDIA_ROOT = env('MEDIA_ROOT', default=os.path.join(BASE_DIR, 'media'))
 MEDIA_URL = '/media/'
 
 
@@ -172,18 +173,21 @@ MANAGERS = [
 
 
 # Email
-EMAIL_HOST = env('EMAIL_HOST')
-EMAIL_HOST_ADDRESS = env('EMAIL_HOST_ADDRESS')
-EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
-EMAIL_HOST_USER = env('EMAIL_HOST_USER')
+EMAIL_HOST = env('EMAIL_HOST', default='')
+EMAIL_HOST_ADDRESS = env('EMAIL_HOST_ADDRESS', default='')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 
 
 # Directory paths for catalog files and updater
-BASE_CATALOG_DIR = os.path.join(BASE_DIR, 'catalog_files')
+# In a container the RDF files live on a volume that outlives each update,
+# while the temporary directory belongs on scratch space: the updater refuses
+# to start if a crashed run left its temporary directory behind.
+BASE_CATALOG_DIR = env('CATALOG_DIR', default=os.path.join(BASE_DIR, 'catalog_files'))
 CATALOG_RDF_DIR = os.path.join(BASE_CATALOG_DIR, 'rdf')
 CATALOG_INDEX_DIR = os.path.join(CATALOG_RDF_DIR, 'index.json')
 CATALOG_LOG_DIR = os.path.join(BASE_CATALOG_DIR, 'log')
-CATALOG_TEMP_DIR = os.path.join(BASE_CATALOG_DIR, 'tmp')
+CATALOG_TEMP_DIR = env('CATALOG_TEMP_DIR', default=os.path.join(BASE_CATALOG_DIR, 'tmp'))
 
 
 # Settings for Django REST Framework JSON API

@@ -1,0 +1,13 @@
+.git
+.github
+.dockerignore
+Dockerfile
+charts
+catalog_files
+staticfiles
+media
+venv
+.venv
+gutendex/.env
+**/__pycache__
+**/*.pyc
