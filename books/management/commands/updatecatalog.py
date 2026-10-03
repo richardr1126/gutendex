@@ -9,6 +9,7 @@ import urllib.request
 from django.conf import settings
 from django.core.mail import send_mail
 from django.core.management.base import BaseCommand, CommandError
+from django.db import transaction
 
 from books import utils
 from books.models import *
@@ -76,148 +77,7 @@ def put_catalog_in_db():
         book = utils.get_book(id, book_path)
 
         try:
-            '''Make/update the book.'''
-
-            book_in_db = Book.objects.filter(gutenberg_id=id)
-
-            if book_in_db.exists():
-                book_in_db = book_in_db[0]
-                book_in_db.copyright = book['copyright']
-                book_in_db.download_count = book['downloads']
-                book_in_db.media_type = book['type']
-                book_in_db.title = book['title']
-                book_in_db.save()
-            else:
-                book_in_db = Book.objects.create(
-                    gutenberg_id=id,
-                    copyright=book['copyright'],
-                    download_count=book['downloads'],
-                    media_type=book['type'],
-                    title=book['title']
-                )
-
-            ''' Make/update the authors. '''
-
-            authors = []
-            for author in book['authors']:
-                person = get_or_create_person(author)
-                authors.append(person)
-
-            book_in_db.authors.clear()
-            for author in authors:
-                book_in_db.authors.add(author)
-
-            ''' Make/update the editors. '''
-
-            editors = []
-            for editor in book['editors']:
-                person = get_or_create_person(editor)
-                editors.append(person)
-
-            book_in_db.editors.clear()
-            for editor in editors:
-                book_in_db.editors.add(editor)
-
-            ''' Make/update the translators. '''
-
-            translators = []
-            for translator in book['translators']:
-                person = get_or_create_person(translator)
-                translators.append(person)
-
-            book_in_db.translators.clear()
-            for translator in translators:
-                book_in_db.translators.add(translator)
-
-            ''' Make/update the book shelves. '''
-
-            bookshelves = []
-            for shelf in book['bookshelves']:
-                shelf_in_db = Bookshelf.objects.filter(name=shelf)
-                if shelf_in_db.exists():
-                    shelf_in_db = shelf_in_db[0]
-                else:
-                    shelf_in_db = Bookshelf.objects.create(name=shelf)
-                bookshelves.append(shelf_in_db)
-
-            book_in_db.bookshelves.clear()
-            for bookshelf in bookshelves:
-                book_in_db.bookshelves.add(bookshelf)
-
-            ''' Make/update the formats. '''
-
-            old_formats = Format.objects.filter(book=book_in_db)
-
-            format_ids = []
-            for format_ in book['formats']:
-                format_in_db = Format.objects.filter(
-                    book=book_in_db,
-                    mime_type=format_,
-                    url=book['formats'][format_]
-                )
-                if format_in_db.exists():
-                    format_in_db = format_in_db[0]
-                else:
-                    format_in_db = Format.objects.create(
-                        book=book_in_db,
-                        mime_type=format_,
-                        url=book['formats'][format_]
-                    )
-                format_ids.append(format_in_db.id)
-
-            for old_format in old_formats:
-                if old_format.id not in format_ids:
-                    old_format.delete()
-
-            ''' Make/update the languages. '''
-
-            languages = []
-            for language in book['languages']:
-                language_in_db = Language.objects.filter(code=language)
-                if language_in_db.exists():
-                    language_in_db = language_in_db[0]
-                else:
-                    language_in_db = Language.objects.create(code=language)
-                languages.append(language_in_db)
-
-            book_in_db.languages.clear()
-            for language in languages:
-                book_in_db.languages.add(language)
-
-            ''' Make/update subjects. '''
-
-            subjects = []
-            for subject in book['subjects']:
-                subject_in_db = Subject.objects.filter(name=subject)
-                if subject_in_db.exists():
-                    subject_in_db = subject_in_db[0]
-                else:
-                    subject_in_db = Subject.objects.create(name=subject)
-                subjects.append(subject_in_db)
-
-            book_in_db.subjects.clear()
-            for subject in subjects:
-                book_in_db.subjects.add(subject)
-
-            ''' Make/update summaries. '''
-
-            old_summaries = Summary.objects.filter(book=book_in_db)
-
-            summary_ids = []
-            for summary in book['summaries']:
-                summary_in_db = Summary.objects.filter(book=book_in_db, text=summary)
-                if summary_in_db.exists():
-                    summary_in_db = summary_in_db[0]
-                else:
-                    summary_in_db = Summary.objects.create(
-                        book=book_in_db, text=summary
-                    ) 
-                summary_ids.append(summary_in_db.id)
-
-            for old_summary in old_summaries:
-                if old_summary.id not in summary_ids:
-                    old_summary.delete()
-
+            put_book_in_db(id, book)
         except Exception as error:
             book_json = json.dumps(book, indent=4)
             log(
@@ -226,6 +86,155 @@ def put_catalog_in_db():
                 '\n'
             )
             raise error
+
+
+# One transaction per book. Left to autocommit, every one of the dozens of
+# statements a book takes was its own commit and its own wait for the disk.
+# It also means a failure part-way through a book no longer leaves it with
+# half its authors or formats.
+@transaction.atomic
+def put_book_in_db(id, book):
+    '''Make/update the book.'''
+
+    book_in_db = Book.objects.filter(gutenberg_id=id)
+
+    if book_in_db.exists():
+        book_in_db = book_in_db[0]
+        book_in_db.copyright = book['copyright']
+        book_in_db.download_count = book['downloads']
+        book_in_db.media_type = book['type']
+        book_in_db.title = book['title']
+        book_in_db.save()
+    else:
+        book_in_db = Book.objects.create(
+            gutenberg_id=id,
+            copyright=book['copyright'],
+            download_count=book['downloads'],
+            media_type=book['type'],
+            title=book['title']
+        )
+
+    ''' Make/update the authors. '''
+
+    authors = []
+    for author in book['authors']:
+        person = get_or_create_person(author)
+        authors.append(person)
+
+    book_in_db.authors.clear()
+    for author in authors:
+        book_in_db.authors.add(author)
+
+    ''' Make/update the editors. '''
+
+    editors = []
+    for editor in book['editors']:
+        person = get_or_create_person(editor)
+        editors.append(person)
+
+    book_in_db.editors.clear()
+    for editor in editors:
+        book_in_db.editors.add(editor)
+
+    ''' Make/update the translators. '''
+
+    translators = []
+    for translator in book['translators']:
+        person = get_or_create_person(translator)
+        translators.append(person)
+
+    book_in_db.translators.clear()
+    for translator in translators:
+        book_in_db.translators.add(translator)
+
+    ''' Make/update the book shelves. '''
+
+    bookshelves = []
+    for shelf in book['bookshelves']:
+        shelf_in_db = Bookshelf.objects.filter(name=shelf)
+        if shelf_in_db.exists():
+            shelf_in_db = shelf_in_db[0]
+        else:
+            shelf_in_db = Bookshelf.objects.create(name=shelf)
+        bookshelves.append(shelf_in_db)
+
+    book_in_db.bookshelves.clear()
+    for bookshelf in bookshelves:
+        book_in_db.bookshelves.add(bookshelf)
+
+    ''' Make/update the formats. '''
+
+    old_formats = Format.objects.filter(book=book_in_db)
+
+    format_ids = []
+    for format_ in book['formats']:
+        format_in_db = Format.objects.filter(
+            book=book_in_db,
+            mime_type=format_,
+            url=book['formats'][format_]
+        )
+        if format_in_db.exists():
+            format_in_db = format_in_db[0]
+        else:
+            format_in_db = Format.objects.create(
+                book=book_in_db,
+                mime_type=format_,
+                url=book['formats'][format_]
+            )
+        format_ids.append(format_in_db.id)
+
+    for old_format in old_formats:
+        if old_format.id not in format_ids:
+            old_format.delete()
+
+    ''' Make/update the languages. '''
+
+    languages = []
+    for language in book['languages']:
+        language_in_db = Language.objects.filter(code=language)
+        if language_in_db.exists():
+            language_in_db = language_in_db[0]
+        else:
+            language_in_db = Language.objects.create(code=language)
+        languages.append(language_in_db)
+
+    book_in_db.languages.clear()
+    for language in languages:
+        book_in_db.languages.add(language)
+
+    ''' Make/update subjects. '''
+
+    subjects = []
+    for subject in book['subjects']:
+        subject_in_db = Subject.objects.filter(name=subject)
+        if subject_in_db.exists():
+            subject_in_db = subject_in_db[0]
+        else:
+            subject_in_db = Subject.objects.create(name=subject)
+        subjects.append(subject_in_db)
+
+    book_in_db.subjects.clear()
+    for subject in subjects:
+        book_in_db.subjects.add(subject)
+
+    ''' Make/update summaries. '''
+
+    old_summaries = Summary.objects.filter(book=book_in_db)
+
+    summary_ids = []
+    for summary in book['summaries']:
+        summary_in_db = Summary.objects.filter(book=book_in_db, text=summary)
+        if summary_in_db.exists():
+            summary_in_db = summary_in_db[0]
+        else:
+            summary_in_db = Summary.objects.create(
+                book=book_in_db, text=summary
+            ) 
+        summary_ids.append(summary_in_db.id)
+
+    for old_summary in old_summaries:
+        if old_summary.id not in summary_ids:
+            old_summary.delete()
 
 
 def get_or_create_person(data):
@@ -365,6 +374,10 @@ class Command(BaseCommand):
             error_message = str(error)
             log('Error:', error_message)
             log('')
-            shutil.rmtree(TEMP_PATH)
+            shutil.rmtree(TEMP_PATH, ignore_errors=True)
+            send_log_email()
+            # Fail the process, so a scheduled run that broke shows as a
+            # failed Job instead of a successful one with an error in its log.
+            raise CommandError(error_message) from error
 
         send_log_email()
