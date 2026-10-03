@@ -19,7 +19,9 @@ env = environ.Env(
     ADMIN_EMAILS=(list, []),
     ADMIN_NAMES=(list, []),
     ALLOWED_HOSTS=(list, []),
+    API_KEYS=(list, []),
     DEBUG=(bool, False),
+    FORCE_HTTPS=(bool, False),
     MANAGER_EMAILS=(list, []),
     MANAGER_NAMES=(list, []),
 )
@@ -62,10 +64,14 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'gutendex.middleware.ForceHttpsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
+    # After CORS, so a browser's preflight is answered before a key is asked
+    # for; preflights cannot carry one.
+    'gutendex.middleware.ApiKeyMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -188,6 +194,19 @@ CATALOG_RDF_DIR = os.path.join(BASE_CATALOG_DIR, 'rdf')
 CATALOG_INDEX_DIR = os.path.join(CATALOG_RDF_DIR, 'index.json')
 CATALOG_LOG_DIR = os.path.join(BASE_CATALOG_DIR, 'log')
 CATALOG_TEMP_DIR = env('CATALOG_TEMP_DIR', default=os.path.join(BASE_CATALOG_DIR, 'tmp'))
+
+
+# Access control. With no keys configured the API is public, as upstream.
+# With keys, every request except the health check must send one, as
+# `X-API-Key: <key>` or `Authorization: Bearer <key>`. Several keys can be
+# listed so one can be rotated without breaking clients still sending another.
+API_KEYS = [key for key in env('API_KEYS') if key]
+
+# Behind Cloudflare and Traefik the request reaches Django as plain HTTP, and
+# Traefik overwrites the X-Forwarded-Proto Cloudflare sends unless it is told
+# to trust Cloudflare's addresses. Without this the pagination links come back
+# as http://, which clients that insist on HTTPS refuse to follow.
+FORCE_HTTPS = env('FORCE_HTTPS')
 
 
 # Settings for Django REST Framework JSON API
