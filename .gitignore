@@ -4,5 +4,6 @@
 catalog_files
 gutendex/.env
 venv
+charts/.env
 staticfiles
 media

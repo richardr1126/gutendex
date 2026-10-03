@@ -1,0 +1,232 @@
+# Every Gutendex process (the API, its migrations, the catalog update) reads
+# the same settings. Secrets — SECRET_KEY, DATABASE_PASSWORD, API_KEYS — come
+# from the `gutendex-secrets` Secret made by charts/create_secrets.sh.
+x-gutendex-env: &gutendex-env
+  TZ: UTC
+  ALLOWED_HOSTS: gutendex.richardr.dev,localhost
+  DATABASE_HOST: gutendex-postgres
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: gutendex
+  DATABASE_USER: gutendex
+  # TLS ends at Cloudflare; this makes the pagination links https://.
+  FORCE_HTTPS: "true"
+x-gutendex-image: &gutendex-image
+  repository: ghcr.io/richardr1126/gutendex
+  tag: latest
+  pullPolicy: Always
+x-gutendex-secrets: &gutendex-secrets
+  - secretRef:
+      name: gutendex-secrets
+
+app-template:
+  # yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/values.schema.json
+
+  controllers:
+    main:
+      replicas: 2
+      strategy: RollingUpdate
+      annotations:
+        reloader.stakater.com/auto: "true"
+      initContainers:
+        # Before a replica serves, rather than in the server's command where
+        # every gunicorn restart would rerun them. On a fresh install both
+        # replicas can still start them at once; the loser fails, and its
+        # restart finds nothing left to apply.
+        migrate:
+          image: *gutendex-image
+          command: ["python", "manage.py", "migrate", "--noinput"]
+          env: *gutendex-env
+          envFrom: *gutendex-secrets
+      containers:
+        main:
+          image: *gutendex-image
+          env:
+            <<: *gutendex-env
+            GUNICORN_WORKERS: "3"
+          envFrom: *gutendex-secrets
+          # The probes send Host: localhost because Django rejects any Host
+          # not in ALLOWED_HOSTS, and a kubelet probe's Host is the pod IP.
+          probes:
+            startup:
+              enabled: true
+              custom: true
+              spec:
+                httpGet:
+                  path: /healthz
+                  port: 8000
+                  httpHeaders:
+                    - name: Host
+                      value: localhost
+                periodSeconds: 5
+                timeoutSeconds: 3
+                failureThreshold: 30
+            liveness:
+              enabled: true
+              custom: true
+              spec:
+                tcpSocket:
+                  port: 8000
+                periodSeconds: 10
+                timeoutSeconds: 3
+                failureThreshold: 3
+            readiness:
+              enabled: true
+              custom: true
+              spec:
+                httpGet:
+                  path: /healthz
+                  port: 8000
+                  httpHeaders:
+                    - name: Host
+                      value: localhost
+                periodSeconds: 10
+                timeoutSeconds: 3
+                failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 192Mi
+            limits:
+              memory: 512Mi
+
+    postgres:
+      type: statefulset
+      annotations:
+        reloader.stakater.com/auto: "true"
+      pod:
+        # The database is on local-path storage, so it lives wherever it is
+        # first scheduled. Keep it on the amd64 node's disk rather than a Pi's
+        # SD card; remove this to let it land anywhere.
+        nodeSelector:
+          kubernetes.io/arch: amd64
+      statefulset:
+        volumeClaimTemplates:
+          - name: data
+            accessMode: ReadWriteOnce
+            size: 10Gi
+            globalMounts:
+              - path: /var/lib/postgresql/data
+      containers:
+        main:
+          image:
+            repository: postgres
+            tag: 17-alpine
+            pullPolicy: IfNotPresent
+          env:
+            TZ: UTC
+            POSTGRES_DB: gutendex
+            POSTGRES_USER: gutendex
+            POSTGRES_PASSWORD:
+              valueFrom:
+                secretKeyRef:
+                  name: gutendex-secrets
+                  key: DATABASE_PASSWORD
+            # A subdirectory, because the volume's root holds lost+found on
+            # some filesystems and initdb refuses a non-empty directory.
+            PGDATA: /var/lib/postgresql/data/pgdata
+          probes:
+            liveness: &postgres-probe
+              enabled: true
+              custom: true
+              spec:
+                exec:
+                  command: ["pg_isready", "-U", "gutendex", "-d", "gutendex"]
+                periodSeconds: 10
+                timeoutSeconds: 3
+                failureThreshold: 6
+            readiness: *postgres-probe
+            startup:
+              enabled: true
+              custom: true
+              spec:
+                exec:
+                  command: ["pg_isready", "-U", "gutendex", "-d", "gutendex"]
+                periodSeconds: 5
+                failureThreshold: 60
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+
+    # Downloads Gutenberg's RDF catalog and loads it. Gutenberg regenerates
+    # the archive daily. A brand-new install starts empty: trigger the first
+    # run by hand (see the chart README) rather than waiting for the schedule.
+    updatecatalog:
+      type: cronjob
+      cronjob:
+        schedule: "0 9 * * *" # 03:00 Mountain, 09:00 UTC
+        concurrencyPolicy: Forbid
+        startingDeadlineSeconds: 3600
+        successfulJobsHistory: 1
+        failedJobsHistory: 2
+        backoffLimit: 1
+      pod:
+        # Same node as the database, so the load is not over the network
+        # from a Pi, and the catalog volume below stays put.
+        nodeSelector:
+          kubernetes.io/arch: amd64
+      containers:
+        main:
+          image: *gutendex-image
+          command: ["python", "manage.py", "updatecatalog"]
+          env:
+            <<: *gutendex-env
+            CATALOG_DIR: /catalog
+            CATALOG_TEMP_DIR: /scratch/tmp
+          envFrom: *gutendex-secrets
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+
+  service:
+    main:
+      controller: main
+      ports:
+        http:
+          port: 8000
+    postgres:
+      controller: postgres
+      ports:
+        postgres:
+          port: 5432
+
+  ingress:
+    main:
+      enabled: true
+      className: traefik
+      annotations:
+        external-dns.alpha.kubernetes.io/hostname: gutendex.richardr.dev
+        external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+      hosts:
+        - host: gutendex.richardr.dev
+          paths:
+            - path: /
+              service:
+                identifier: main
+                port: http
+
+  persistence:
+    # The previous run's RDF files. The updater compares against them to find
+    # books Gutenberg has withdrawn and deletes those from the database.
+    catalog:
+      enabled: true
+      type: persistentVolumeClaim
+      accessMode: ReadWriteOnce
+      size: 5Gi
+      advancedMounts:
+        updatecatalog:
+          main:
+            - path: /catalog
+    # The downloaded archive and its extraction, gone when the pod is.
+    scratch:
+      enabled: true
+      type: emptyDir
+      advancedMounts:
+        updatecatalog:
+          main:
+            - path: /scratch
