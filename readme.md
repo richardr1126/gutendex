@@ -8,6 +8,23 @@ library of free ebooks.
 Try it at [`gutendex.com`](http://gutendex.com).
 
 
+This fork
+---------
+
+This fork runs the catalog for [OpenReader](https://github.com/richardr1126/openreader) at
+`gutendex.richardr.dev`. On top of upstream it adds:
+
+- A `Dockerfile` (gunicorn, with WhiteNoise for the static files) and a workflow publishing a
+  multi-arch image to `ghcr.io/richardr1126/gutendex`.
+- A Helm chart in [`charts/gutendex`](charts/gutendex) with its own PostgreSQL and a nightly
+  `updatecatalog` CronJob.
+- Optional API keys (`API_KEYS`, sent as `X-API-Key` or `Authorization: Bearer`), and
+  `FORCE_HTTPS` so pagination links stay `https://` behind a TLS-terminating proxy.
+- Settings that default everything a container does not need (email, static and media paths), and
+  catalog directories that can be pointed at volumes (`CATALOG_DIR`, `CATALOG_TEMP_DIR`).
+- An updater that saves each book in one transaction and exits non-zero when a run fails.
+
+
 Why?
 ----
 
