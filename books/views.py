@@ -2,6 +2,7 @@ from django.db.models import Q
 
 from rest_framework import exceptions as drf_exceptions, viewsets
 
+from .content_policy import POLICY_VERSION, filter_catalog
 from .models import *
 from .serializers import *
 
@@ -16,8 +17,15 @@ class BookViewSet(viewsets.ModelViewSet):
 
     serializer_class = BookSerializer
 
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        response["X-OpenReader-Catalog-Policy"] = POLICY_VERSION
+        # Reverse-proxy caches must not retain results after an exclusion update.
+        response["Cache-Control"] = "no-store"
+        return response
+
     def get_queryset(self):
-        queryset = self.queryset
+        queryset = filter_catalog(self.queryset)
 
         sort = self.request.GET.get('sort')
         if sort == 'ascending':
