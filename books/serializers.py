@@ -76,7 +76,9 @@ class BookSerializer(serializers.ModelSerializer):
         return bookshelves
 
     def get_formats(self, book):
-        return {f.mime_type: f.url for f in book.get_formats()}
+        # The reverse manager consumes the page queryset's prefetch cache;
+        # querying Format directly would issue another query for every book.
+        return {f.mime_type: f.url for f in book.format_set.all()}
 
     def get_id(self, book):
         return book.gutenberg_id
@@ -92,6 +94,6 @@ class BookSerializer(serializers.ModelSerializer):
         return subjects
 
     def get_summaries(self, book):
-        summaries = [summary.text for summary in book.get_summaries()]
+        summaries = [summary.text for summary in book.summary_set.all()]
         summaries.sort()
         return summaries

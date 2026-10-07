@@ -21,12 +21,6 @@ class Book(models.Model):
         else:
             return str(self.id)
 
-    def get_formats(self):
-        return Format.objects.filter(book_id=self.id)
-
-    def get_summaries(self):
-        return Summary.objects.filter(book_id=self.id)
-
 
 class Bookshelf(models.Model):
     name = models.CharField(max_length=64, unique=True)

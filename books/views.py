@@ -33,7 +33,7 @@ class BookViewSet(viewsets.ModelViewSet):
         elif sort == 'descending':
             queryset = queryset.order_by('-id')
         else:
-            queryset = queryset.order_by('-download_count')
+            queryset = queryset.order_by('-download_count', 'gutenberg_id')
 
         author_year_end = self.request.GET.get('author_year_end')
         try:
@@ -42,8 +42,10 @@ class BookViewSet(viewsets.ModelViewSet):
             author_year_end = None
         if author_year_end is not None:
             queryset = queryset.filter(
-                Q(authors__birth_year__lte=author_year_end) |
-                Q(authors__death_year__lte=author_year_end)
+                pk__in=Book.authors.through.objects.filter(
+                    Q(person__birth_year__lte=author_year_end) |
+                    Q(person__death_year__lte=author_year_end)
+                ).values('book_id')
             )
 
         author_year_start = self.request.GET.get('author_year_start')
@@ -53,8 +55,10 @@ class BookViewSet(viewsets.ModelViewSet):
             author_year_start = None
         if author_year_start is not None:
             queryset = queryset.filter(
-                Q(authors__birth_year__gte=author_year_start) |
-                Q(authors__death_year__gte=author_year_start)
+                pk__in=Book.authors.through.objects.filter(
+                    Q(person__birth_year__gte=author_year_start) |
+                    Q(person__death_year__gte=author_year_start)
+                ).values('book_id')
             )
 
         copyright_parameter = self.request.GET.get('copyright')
@@ -86,11 +90,13 @@ class BookViewSet(viewsets.ModelViewSet):
         language_string = self.request.GET.get('languages')
         if language_string is not None:
             language_codes = [code.lower() for code in language_string.split(',')]
-            queryset = queryset.filter(languages__code__in=language_codes)
+            queryset = queryset.filter(pk__in=Book.languages.through.objects.filter(
+                language__code__in=language_codes).values('book_id'))
 
         mime_type = self.request.GET.get('mime_type')
         if mime_type is not None:
-            queryset = queryset.filter(format__mime_type__startswith=mime_type)
+            queryset = queryset.filter(pk__in=Format.objects.filter(
+                mime_type__startswith=mime_type).values('book_id'))
 
         search_string = self.request.GET.get('search')
         if search_string is not None:
@@ -98,13 +104,23 @@ class BookViewSet(viewsets.ModelViewSet):
             search_terms = search_string.split(' ')
             for term in search_terms[:4]:
                 queryset = queryset.filter(
-                    Q(authors__name__icontains=term) | Q(title__icontains=term)
+                    Q(pk__in=Book.authors.through.objects.filter(
+                        person__name__icontains=term).values('book_id')) |
+                    Q(title__icontains=term)
                 )
 
         topic = self.request.GET.get('topic')
         if topic is not None:
             queryset = queryset.filter(
-                Q(bookshelves__name__icontains=topic) | Q(subjects__name__icontains=topic)
+                Q(pk__in=Book.bookshelves.through.objects.filter(
+                    bookshelf__name__icontains=topic).values('book_id')) |
+                Q(pk__in=Book.subjects.through.objects.filter(
+                    subject__name__icontains=topic).values('book_id'))
             )
 
-        return queryset.distinct()
+        # Every relationship predicate is membership in a set of book IDs.
+        # No join multiplies book rows, so COUNT and pagination need neither
+        # DISTINCT nor the wide aggregate it forced for title/author searches.
+        return queryset.prefetch_related(
+            'authors', 'editors', 'translators', 'bookshelves', 'languages',
+            'subjects', 'format_set', 'summary_set')
