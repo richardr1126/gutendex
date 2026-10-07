@@ -12,8 +12,9 @@ x-gutendex-env: &gutendex-env
   FORCE_HTTPS: "true"
 x-gutendex-image: &gutendex-image
   repository: ghcr.io/richardr1126/gutendex
-  tag: latest
-  pullPolicy: Always
+  # Pinned to the tested content-policy build so Argo sync rolls the pods.
+  tag: sha-768c796
+  pullPolicy: IfNotPresent
 x-gutendex-secrets: &gutendex-secrets
   - secretRef:
       name: gutendex-secrets
