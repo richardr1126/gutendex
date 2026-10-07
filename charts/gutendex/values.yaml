@@ -13,7 +13,7 @@ x-gutendex-env: &gutendex-env
 x-gutendex-image: &gutendex-image
   repository: ghcr.io/richardr1126/gutendex
   # Pinned to the tested content-policy build so Argo sync rolls the pods.
-  tag: sha-768c796
+  tag: sha-d48d728
   pullPolicy: IfNotPresent
 x-gutendex-secrets: &gutendex-secrets
   - secretRef:

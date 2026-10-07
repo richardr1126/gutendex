@@ -33,8 +33,8 @@ origin Cache-Control, and verify through the public reverse-proxy hostname.
 
 ## Deploy this change
 
-The chart pins `ghcr.io/richardr1126/gutendex:sha-768c796`, the tested
-policy build published by GitHub Actions. Refresh the `gutendex` Argo CD
+The chart pins `ghcr.io/richardr1126/gutendex:sha-d48d728`, the tested
+policy and performance build published by GitHub Actions. Refresh the `gutendex` Argo CD
 application to the latest master, then sync. Changing the image tag rolls API
 replicas and updates the nightly importer without modifying the database.
 Wait for Healthy/Synced, then run the public-endpoint checks above. A plain

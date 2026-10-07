@@ -21,6 +21,7 @@ Run `python manage.py test books --settings=books.test_settings`.
 The API regression tests cover multi-author search/year semantics, authorless
 titles, relationship fanout, pagination, combined filters and content exclusions.
 Serialization tests cover the existing JSON shape and bounded query counts.
+All fourteen tests also passed against an isolated PostgreSQL 17 database.
 
 On October 7, 2026, a one-shot read-only process on the Raspberry Pi cluster
 queried the live 79,557-book PostgreSQL catalog with the proposed view and
