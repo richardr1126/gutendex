@@ -1,6 +1,6 @@
 apiVersion: v2
 name: gutendex
-description: A Helm chart for Gutendex, with its own PostgreSQL and a nightly catalog update, based on the bjw-s app-template
+description: A Helm chart for Gutendex, with a CloudNativePG database and a nightly catalog update, based on the bjw-s app-template
 type: application
 version: 0.1.0
 appVersion: "latest"

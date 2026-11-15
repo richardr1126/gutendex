@@ -1,0 +1,28 @@
+{{- with .Values.database }}
+# Postgres for Gutendex, run by the CloudNativePG operator (installed cluster-wide).
+# CloudNativePG creates:
+#   {{ $.Release.Name }}-db-rw   Service for the primary (DATABASE_HOST)
+#   {{ $.Release.Name }}-db-app  Secret with the generated `gutendex` user's password
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ $.Release.Name }}-db
+spec:
+  instances: {{ .instances }}
+  imageName: {{ .imageName }}
+  # One instance per node, so a node going down only costs a replica.
+  affinity:
+    enablePodAntiAffinity: true
+    podAntiAffinityType: required
+  bootstrap:
+    initdb:
+      database: gutendex
+      owner: gutendex
+  storage:
+    size: {{ .size }}
+    storageClass: {{ .storageClass }}
+  {{- with .resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

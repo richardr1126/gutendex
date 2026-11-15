@@ -11,7 +11,7 @@ spec:
     path: charts/gutendex
     helm:
       # Pinned rather than left to default to the Application's name: the API
-      # finds the database at `<release>-postgres`, so renaming the
+      # finds the database at `<release>-db-rw`, so renaming the
       # Application must not rename the release.
       releaseName: gutendex
       valueFiles:

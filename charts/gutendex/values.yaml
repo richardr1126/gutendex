@@ -1,13 +1,19 @@
 # Every Gutendex process (the API, its migrations, the catalog update) reads
-# the same settings. Secrets — SECRET_KEY, DATABASE_PASSWORD, API_KEYS — come
-# from the `gutendex-secrets` Secret made by charts/create_secrets.sh.
+# the same settings. SECRET_KEY and API_KEYS come from the `gutendex-secrets`
+# Secret made by charts/create_secrets.sh. The database password comes from
+# `gutendex-db-app`, which CloudNativePG generates (templates/database.yaml).
 x-gutendex-env: &gutendex-env
   TZ: UTC
   ALLOWED_HOSTS: gutendex.richardr.dev,localhost
-  DATABASE_HOST: gutendex-postgres
+  DATABASE_HOST: gutendex-db-rw
   DATABASE_PORT: "5432"
   DATABASE_NAME: gutendex
   DATABASE_USER: gutendex
+  DATABASE_PASSWORD:
+    valueFrom:
+      secretKeyRef:
+        name: gutendex-db-app
+        key: password
   # TLS ends at Cloudflare; this makes the pagination links https://.
   FORCE_HTTPS: "true"
 x-gutendex-image: &gutendex-image
@@ -18,6 +24,21 @@ x-gutendex-image: &gutendex-image
 x-gutendex-secrets: &gutendex-secrets
   - secretRef:
       name: gutendex-secrets
+
+# The database: a CloudNativePG Cluster (templates/database.yaml). Postgres
+# runs as the postgres user from the start, with no gosu step (gosu hangs in
+# containers on Ubuntu's 7.0 kernels).
+database:
+  instances: 2
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.6-202610260820-standard-trixie
+  size: 5Gi
+  storageClass: local-path-retain
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
 
 app-template:
   # yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/values.schema.json
@@ -90,61 +111,6 @@ app-template:
             limits:
               memory: 512Mi
 
-    postgres:
-      type: statefulset
-      annotations:
-        reloader.stakater.com/auto: "true"
-      statefulset:
-        volumeClaimTemplates:
-          - name: data
-            accessMode: ReadWriteOnce
-            size: 10Gi
-            globalMounts:
-              - path: /var/lib/postgresql/data
-      containers:
-        main:
-          image:
-            repository: postgres
-            tag: 17-alpine
-            pullPolicy: IfNotPresent
-          env:
-            TZ: UTC
-            POSTGRES_DB: gutendex
-            POSTGRES_USER: gutendex
-            POSTGRES_PASSWORD:
-              valueFrom:
-                secretKeyRef:
-                  name: gutendex-secrets
-                  key: DATABASE_PASSWORD
-            # A subdirectory, because the volume's root holds lost+found on
-            # some filesystems and initdb refuses a non-empty directory.
-            PGDATA: /var/lib/postgresql/data/pgdata
-          probes:
-            liveness: &postgres-probe
-              enabled: true
-              custom: true
-              spec:
-                exec:
-                  command: ["pg_isready", "-U", "gutendex", "-d", "gutendex"]
-                periodSeconds: 10
-                timeoutSeconds: 3
-                failureThreshold: 6
-            readiness: *postgres-probe
-            startup:
-              enabled: true
-              custom: true
-              spec:
-                exec:
-                  command: ["pg_isready", "-U", "gutendex", "-d", "gutendex"]
-                periodSeconds: 5
-                failureThreshold: 60
-          resources:
-            requests:
-              cpu: 50m
-              memory: 256Mi
-            limits:
-              memory: 1Gi
-
     # Downloads Gutenberg's RDF catalog and loads it. Gutenberg regenerates
     # the archive daily. A brand-new install starts empty: trigger the first
     # run by hand (see the chart README) rather than waiting for the schedule.
@@ -179,11 +145,6 @@ app-template:
       ports:
         http:
           port: 8000
-    postgres:
-      controller: postgres
-      ports:
-        postgres:
-          port: 5432
 
   ingress:
     main:

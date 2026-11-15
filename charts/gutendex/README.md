@@ -7,10 +7,11 @@ It runs three things:
 - **`main`**, the API: gunicorn behind a Traefik ingress at
   `gutendex.richardr.dev`. external-dns publishes the record through
   Cloudflare with proxying on, and Cloudflare terminates HTTPS.
-- **`postgres`**, a dedicated PostgreSQL 17 StatefulSet on a 10 Gi
-  `local-path` volume. Nothing pins it to a node, but a `local-path` volume
-  belongs to the node it was first created on, so the database stays wherever
-  it first lands.
+- **`gutendex-db`**, a [CloudNativePG](https://cloudnative-pg.io) `Cluster`
+  (`templates/database.yaml`): PostgreSQL 18, two instances on different nodes
+  with streaming replication and automatic failover, each on a 5 Gi
+  `local-path-retain` volume. The API connects to `gutendex-db-rw`, which
+  always points at the primary.
 - **`updatecatalog`**, a nightly CronJob that downloads Project Gutenberg's RDF
   catalog and loads it into the database.
 
@@ -20,8 +21,9 @@ The API requires a key. Clients send it as `X-API-Key: <key>` or
 ## Prerequisites
 
 - [Helm](https://helm.sh) >= 3.0
-- Kubernetes cluster with Traefik, external-dns (Cloudflare) and a
-  `local-path` storage class
+- Kubernetes cluster with Traefik, external-dns (Cloudflare), the
+  CloudNativePG operator and a `local-path-retain` storage class (all from
+  k3s-cluster's `infrastructure/setup-infrastructure.sh`)
 - The image `ghcr.io/richardr1126/gutendex`, published by
   `.github/workflows/docker-publish.yml` on every push to `master`
 
@@ -45,9 +47,9 @@ helm dependency update
    ./charts/create_secrets.sh
    ```
 
-2. Install. **The release must be named `gutendex`**: the API finds the
-   database at `gutendex-postgres`, the Service name app-template derives from
-   the release name. A different name needs `DATABASE_HOST` changed to match.
+2. Install. **The release must be named `gutendex`**: the database is
+   `<release>-db`, and the API looks for `gutendex-db-rw` and the
+   `gutendex-db-app` secret. A different name needs those changed to match.
 
    ```bash
    helm upgrade --install gutendex charts/gutendex -n default
@@ -89,14 +91,13 @@ Settings shared by every Gutendex container are the `x-gutendex-env` anchor at
 the top of `values.yaml`:
 
 - `ALLOWED_HOSTS`: the public host name, plus `localhost` for the probes.
-- `DATABASE_*`: the in-chart Postgres. The password comes from the secret.
+- `DATABASE_*`: the CloudNativePG database. The password comes from
+  `gutendex-db-app`, which CloudNativePG generates; nothing to set by hand.
 - `FORCE_HTTPS`: makes pagination links `https://` behind Cloudflare.
 
 The secret `gutendex-secrets` holds:
 
 - `SECRET_KEY`: Django's signing key.
-- `DATABASE_PASSWORD`: read by Postgres only when its volume is first
-  initialised. Changing it later does not change the database's password.
 - `API_KEYS`: comma-separated. List the new and the old key together while
   clients move over, then remove the old one and rerun `create_secrets.sh`.
   Pods read the secret when they start, so restart the API afterwards:
