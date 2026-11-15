@@ -1,10 +1,12 @@
+# The live copy is in the k3s-cluster repo (argocd/apps/gutendex.yaml), deployed by its app of
+# apps; keep the two in sync. Project `apps`: the cluster's default project is locked down.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: gutendex
   namespace: argocd
 spec:
-  project: default
+  project: apps
   source:
     repoURL: https://github.com/richardr1126/gutendex
     targetRevision: master

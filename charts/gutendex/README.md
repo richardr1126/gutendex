@@ -61,7 +61,8 @@ helm dependency update
    kubectl apply -f charts/argocd.yaml
    ```
 
-   then sync it from the ArgoCD UI. The secret is still made by
+   (in the home cluster the k3s-cluster repo's app of apps creates this Application, in the
+   `apps` project), then sync it from the ArgoCD UI. The secret is still made by
    `create_secrets.sh`; ArgoCD does not manage it.
 
 3. Load the catalog. The database starts empty and the CronJob only runs at
