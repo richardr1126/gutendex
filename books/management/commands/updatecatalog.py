@@ -17,7 +17,12 @@ from books.models import *
 
 TEMP_PATH = settings.CATALOG_TEMP_DIR
 
-URL = 'https://gutenberg.org/cache/epub/feeds/rdf-files.tar.bz2'
+# gutenberg.org first, then its official mirror, which keeps serving the
+# catalog when the main site is down for maintenance.
+URLS = (
+    'https://gutenberg.org/cache/epub/feeds/rdf-files.tar.bz2',
+    'https://gutenberg.pglaf.org/cache/epub/feeds/rdf-files.tar.bz2',
+)
 DOWNLOAD_PATH = os.path.join(TEMP_PATH, 'catalog.tar.bz2')
 
 MOVE_SOURCE_PATH = os.path.join(TEMP_PATH, 'cache/epub')
@@ -29,6 +34,17 @@ LOG_PATH = os.path.join(LOG_DIRECTORY, LOG_FILE_NAME)
 
 
 # This gives a set of the names of the subdirectories in the given file path.
+def download_catalog():
+    for index, url in enumerate(URLS):
+        try:
+            urllib.request.urlretrieve(url, DOWNLOAD_PATH)
+            return
+        except OSError as error:
+            if index == len(URLS) - 1:
+                raise
+            log('  Download from %s failed (%s); trying the next source...' % (url, error))
+
+
 def get_directory_set(path):
     directory_set = set()
     for directory_item in os.listdir(path):
@@ -317,7 +333,7 @@ class Command(BaseCommand):
                 os.makedirs(TEMP_PATH)
 
             log('  Downloading compressed catalog...')
-            urllib.request.urlretrieve(URL, DOWNLOAD_PATH)
+            download_catalog()
 
             log('  Decompressing catalog...')
             if not os.path.exists(DOWNLOAD_PATH):
