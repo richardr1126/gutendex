@@ -18,8 +18,9 @@ x-gutendex-env: &gutendex-env
   FORCE_HTTPS: "true"
 x-gutendex-image: &gutendex-image
   repository: ghcr.io/richardr1126/gutendex
-  # Pinned to the tested content-policy build so Argo sync rolls the pods.
-  tag: sha-d48d728
+  # On the cluster the Argo CD Image Updater pins each new `latest` build's digest
+  # (k3s-cluster: argocd/image-updaters/gutendex.yaml).
+  tag: latest
   pullPolicy: IfNotPresent
 x-gutendex-secrets: &gutendex-secrets
   - secretRef:
